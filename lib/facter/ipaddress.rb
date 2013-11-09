@@ -28,18 +28,27 @@ Facter.add(:ipaddress) do
   confine :kernel => :linux
   setcode do
     ip = nil
+    devname = nil
     output = Facter::Util::IP.exec_ifconfig(["2>/dev/null"])
     if output
-      regexp = /inet (?:addr:)?([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/
+      dev_regexp = /^(?:dev:)?(\w+\d+)/
+      ip_regexp = /inet (?:addr:)?([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/
+
       output.split("\n").each do |line|
-        match = regexp.match(line)
-        if match and not /^127\./.match(match[1])
-          ip = match[1]
-          break
+
+        dev_match = dev_regexp.match(line)
+        if dev_match
+          devname = dev_match[1]
+          next
+        end
+
+        ip_match = ip_regexp.match(line)
+        if ip_match
+          next unless not /docker|lxcbr|lo|ppp|virbr/.match(devname)
+          break ip_match[1]
         end
       end
     end
-    ip
   end
 end
 
@@ -106,18 +115,8 @@ end
 Facter.add(:ipaddress) do
   confine :kernel => %w{windows}
   setcode do
-    require 'facter/util/ip/windows'
-    ipaddr = nil
-
-    adapters = Facter::Util::IP::Windows.get_preferred_ipv4_adapters
-    adapters.find do |nic|
-      nic.IPAddress.any? do |addr|
-        ipaddr = addr if Facter::Util::IP::Windows.valid_ipv4_address?(addr)
-        ipaddr
-      end
-    end
-
-    ipaddr
+    require 'socket'
+    IPSocket.getaddress(Socket.gethostname)
   end
 end
 
